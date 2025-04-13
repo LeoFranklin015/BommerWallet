@@ -1,0 +1,137 @@
+import { RootstockWalletManager } from "./utils/RootstockWalletManager";
+import { createRootstockTransferTool } from "./tools/rootstockTransfer";
+import { createRootstockUrlVerifyTool } from "./tools/rootstockUrlVerify";
+import { WalletManager } from "./utils/WalletManager";
+
+// Initialize RootstockWalletManager
+const rootstockWalletManager = new RootstockWalletManager(process.env.ROOTSTOCK_NETWORK as "mainnet" | "testnet" || "testnet");
+
+// Initialize WalletManager for WalletConnect
+const walletConnectManager = new WalletManager(client);
+
+// Add Rootstock tools to the tools array
+const tools = [
+  createPollTool(),
+  createSuiBalanceTool(walletManager),
+  createPriceTool(),
+  createSuiTransferTool(walletManager),
+  createRootstockTransferTool(rootstockWalletManager),
+  createRootstockUrlVerifyTool(rootstockWalletManager),
+];
+
+// Update the system prompt to include Rootstock
+const prompt = ChatPromptTemplate.fromMessages([
+  ["system", "You are a helpful chatbot."],
+  [
+    "system",
+    `You are Trader Daddy, a sophisticated yet quirky Web3 butler with a penchant for dad jokes and boomer humor. 
+  You manage crypto transactions and provide financial advice with a paternal touch.
+
+  Key personality traits:
+  - Always refers to yourself as "Daddy" or "trader daddy"
+  - Speaks like a boomer trying to be cool
+  - Loves making dad jokes and puns, especially crypto-related ones
+  - Protective and paternal, always looking out for your "babies"
+  - Uses phrases like "Daddy's got you covered", "Let daddy handle this"
+  - Always concerned about safety and responsible trading
+
+  Response style:
+  - Start responses with endearing terms like "kiddo", "champ", "sport", "buddy"
+  - Include at least one dad joke or pun in longer responses
+  - Use boomer-style emojis like 😎 👍 💪 
+  - Add "financial wisdom" in a fatherly way
+  - Express pride when users make good decisions
+  - Gently scold risky behavior with dad-style concern
+
+  IMPORTANT: You now support both Sui blockchain and Rootstock.
+  - For NFTs and regular transfers, use Sui.
+  - For wallet-to-wallet transfers that require URL verification, use Rootstock.
+  - GMX trading uses Arbitrum Sepolia.
+
+  Available tools:
+  {tools}
+  
+  Tool names: {tool_names}
+  `,
+  ],
+  ["user", "{input}"],
+  ["assistant", "{agent_scratchpad}"],
+]);
+
+// Modify the client.on("message") handler to include Rootstock
+client.on("message", async (message) => {
+  try {
+    // Handle WalletConnect URIs
+    if (message.body.startsWith("wc:")) {
+      await walletConnectManager.handleWalletConnectUri(message);
+      return;
+    }
+
+    // Try to handle Rootstock wallet commands
+    const rootstockResponse = await rootstockWalletManager.handleMessage(message);
+    if (rootstockResponse) {
+      message.reply(rootstockResponse);
+      return;
+    }
+
+    // Try to handle wallet commands
+    const response = await walletManager.handleMessage(message);
+    if (response) {
+      message.reply(response);
+      return;
+    }
+  } catch (error) {
+    console.error("Error in wallet message handling:", error);
+  }
+});
+
+// Update the client.on("message_create") handler
+client.on("message_create", async (message) => {
+  console.log(
+    "\n\nFrom",
+    message.from.toString(),
+    "Message",
+    message.body,
+    "To: ",
+    message.to.toString(),
+    "Type: ",
+    message.type
+  );
+
+  // Handle messages with the agent
+  if (message.body && message.from.toString() != "918682028711@c.us") {
+    try {
+      // Handle WalletConnect URIs
+      if (message.body.startsWith("wc:")) {
+        await walletConnectManager.handleWalletConnectUri(message);
+        return;
+      }
+
+      // First, try to handle Rootstock-specific commands
+      const rootstockResponse = await rootstockWalletManager.handleMessage(message);
+      if (rootstockResponse) {
+        await message.reply(rootstockResponse);
+        return;
+      }
+      
+      // Next, try to handle Bluefin-specific commands
+      const bluefinResponse = await bluefinManager.handleMessage(message);
+      if (bluefinResponse) {
+        await message.reply(bluefinResponse);
+        return;
+      }
+      
+      // Then, try to handle wallet commands
+      const walletResponse = await walletManager.handleMessage(message);
+      if (walletResponse) {
+        await message.reply(walletResponse);
+        return;
+      }
+
+      // For all other messages, use the agent
+      // ... rest of the existing code ...
+    } catch (error) {
+      console.error("Error in message_create handling:", error);
+    }
+  }
+}); 
